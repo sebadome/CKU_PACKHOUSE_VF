@@ -10,12 +10,32 @@ import {
   SubmissionPayload,
 } from "../services/precosechaManzanas.service";
 import { finalizeRecepMadurezPomaceas } from "../services/recepMadPomaceas.service";
+import { finalizeProyEmbalajePomaceas } from "../services/proyEmbalajePomaceas.service";
+import { finalizeEmpaque } from "../services/empaque.service";
+import { finalizePresizer } from "../services/ckuPresizer.service";
+import { finalizeAtmControlada } from "../services/atmControlada.service";
 
 export const submissionsRouter = Router();
 
 // =========================================================
 // Helpers
 // =========================================================
+function normalizeSubmissionId(payload: any): string {
+  const raw =
+    payload?.id?.id ??
+    payload?.id?.value ??
+    payload?.id ??
+    payload?.submission_id ??
+    "";
+
+  if (typeof raw !== "string") {
+    throw new Error(`submission_id inválido: ${JSON.stringify(raw)}`);
+  }
+
+  return raw;
+}
+
+
 function makeRequestId(): string {
   // Node 18+ a veces NO expone crypto en globalThis según runtime/bundler.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -228,62 +248,45 @@ function healthToStatus(hs: any): "OK" | "WARN" | "FAIL" {
   return "OK";
 }
 
-function statusToEmoji(status: "OK" | "WARN" | "FAIL") {
-  return status === "OK" ? "✅" : status === "WARN" ? "⚠️" : "❌";
+function statusToEmoji(status: "OK" | "WARN" | "FAIL"): string {
+  if (status === "OK") return "✅";
+  if (status === "WARN") return "⚠️";
+  return "❌";
 }
 
 // =========================================================
-// Route
+// POST /api/submissions/finalize
 // =========================================================
 submissionsRouter.post("/finalize", async (req, res) => {
-  const t0 = Date.now();
   const requestId = makeRequestId();
+  const t0 = Date.now();
 
   try {
-    // 0) Security (opcional)
     requireApiKey(req);
 
-    const payload = req.body as SubmissionPayload;
-
-    // Guardrails mínimos
-    const templateId = String((payload as any)?.templateId ?? "");
-    const submissionId = String((payload as any)?.id ?? "");
-
-    if (!submissionId || !templateId) {
-      return res.status(400).json({
-        ok: false,
-        error: "Payload inválido: faltan id o templateId.",
-        requestId,
-      });
-    }
-
-    const data: any = (payload as any)?.data ?? {};
-    const templateTitle = String((payload as any)?.template?.title ?? "");
-    const templateVersion = String((payload as any)?.template?.version ?? "");
-
+    const payload = req.body;
+    const templateId = String(payload?.templateId ?? "");
+    const templateTitle = String(payload?.template?.title ?? "");
+    const submissionId = payload?.id ?? "";
+    const data = payload?.data ?? {};
     const tipoFruta = String(data?.tipo_fruta ?? data?.encabezado?.tipo_fruta ?? "");
-    const planta = String(data?.planta ?? data?.encabezado?.planta ?? "");
-    const temporada = String(data?.temporada ?? data?.encabezado?.temporada ?? "");
+    const userName = String(payload?.user?.name ?? payload?.submittedBy ?? "");
+    const userId = String(payload?.user?.id ?? "");
+    const userEmail = String(payload?.user?.email ?? "");
 
-    const userName = (payload as any)?.user?.name ?? (payload as any)?.submittedBy ?? "";
-    const userId = (payload as any)?.user?.id ?? "";
-    const userEmail = (payload as any)?.user?.email ?? "";
-
-    const baseFacts: Record<string, string> = {
+    const baseFacts: any = {
       request_id: requestId,
       submission_id: submissionId,
       template_id: templateId,
-      usuario: String(userName ?? ""),
-      email: String(userEmail ?? ""),
-      planta,
-      temporada,
+      template_title: templateTitle,
       tipo_fruta: tipoFruta,
-      "hora(CL)": nowChileString(),
-      "hora(UTC)": nowUtcString(),
+      user: userName,
+      chile_time: nowChileString(),
+      utc_time: nowUtcString(),
     };
 
     // ---------------------------------------------------------
-    // 1) Persistir RAW + Auditar recepción SIEMPRE
+    // 1) Persistencia RAW (SIEMPRE, idempotente)
     // ---------------------------------------------------------
     try {
       await upsertCkuSubmissionRaw(payload);
@@ -294,10 +297,13 @@ submissionsRouter.post("/finalize", async (req, res) => {
         submission_id: submissionId,
         template_id: templateId,
         template_title: templateTitle,
-        user_name: String(userName ?? ""),
-        user_id: String(userId ?? ""),
-        user_email: String(userEmail ?? ""),
-        details: { request_id: requestId, template_version: templateVersion },
+        user_name: userName,
+        user_id: userId,
+        user_email: userEmail,
+        details: {
+          request_id: requestId,
+          data_keys: Object.keys(data ?? {}),
+        },
       });
     } catch (e: any) {
       const info = extractErrorInfo(e);
@@ -355,12 +361,12 @@ submissionsRouter.post("/finalize", async (req, res) => {
           "tiempo(ms)": String(Date.now() - t0),
           ...(Object.keys(counts).length
             ? {
-                "hijas/grupos_pres": String(counts.presiones_grupos ?? ""),
-                "hijas/detalles_pres": String(counts.presiones_detalles ?? ""),
-                "hijas/almidon_filas": String(counts.almidon_filas ?? ""),
-                "hijas/semilla_filas": String(counts.semilla_filas ?? ""),
-                "hijas/semilla_sum": String(counts.semilla_sum ?? ""),
-              }
+              "hijas/grupos_pres": String(counts.presiones_grupos ?? ""),
+              "hijas/detalles_pres": String(counts.presiones_detalles ?? ""),
+              "hijas/almidon_filas": String(counts.almidon_filas ?? ""),
+              "hijas/semilla_filas": String(counts.semilla_filas ?? ""),
+              "hijas/semilla_sum": String(counts.semilla_sum ?? ""),
+            }
             : {}),
         }
       );
@@ -387,7 +393,6 @@ submissionsRouter.post("/finalize", async (req, res) => {
       const status = healthToStatus(counts?.health_status);
       const emoji = statusToEmoji(status);
 
-      // router NO inserta audit DONE para no duplicar (service ya audita)
       await sendTeamsCard(
         env.TEAMS_WEBHOOK_URL,
         `${emoji} FINALIZE ${status} - RECEP_MAD_POMACEAS (API)`,
@@ -398,17 +403,207 @@ submissionsRouter.post("/finalize", async (req, res) => {
           "tiempo(ms)": String(Date.now() - t0),
           ...(Object.keys(counts).length
             ? {
-                "hijas/pres_rows": String(counts.pres_rows ?? ""),
-                "hijas/almidon_rows": String(counts.almidon_rows ?? ""),
-                "hijas/madurez_rows": String(counts.madurez_rows ?? ""),
-                "res/resPres": String(counts.resumen_presion_rows ?? ""),
-                "res/resAlm": String(counts.resumen_almidon_rows ?? ""),
-                "res/resAlmG": String(counts.resumen_almidon_global_rows ?? ""),
-                "pres/esperadas": String(counts.pres_mediciones_esperadas ?? ""),
-                "pres/completadas": String(counts.pres_mediciones_completadas ?? ""),
-                "pres/faltantes": String(counts.pres_mediciones_faltantes ?? ""),
+              "hijas/pres_rows": String(counts.pres_rows ?? ""),
+              "hijas/almidon_rows": String(counts.almidon_rows ?? ""),
+              "hijas/madurez_rows": String(counts.madurez_rows ?? ""),
+              "res/resPres": String(counts.resumen_presion_rows ?? ""),
+              "res/resAlm": String(counts.resumen_almidon_rows ?? ""),
+              "res/resAlmG": String(counts.resumen_almidon_global_rows ?? ""),
+              "pres/esperadas": String(counts.pres_mediciones_esperadas ?? ""),
+              "pres/completadas": String(counts.pres_mediciones_completadas ?? ""),
+              "pres/faltantes": String(counts.pres_mediciones_faltantes ?? ""),
+              health_status: String(counts.health_status ?? ""),
+              processed_utc: String(counts.processed_utc ?? ""),
+            }
+            : {}),
+        }
+      );
+
+      return res.json({
+        ok: true,
+        submissionId: String((result as any)?.submissionId ?? submissionId),
+        requestId,
+        health_status: status,
+        counts,
+      });
+    }
+
+    // =========================================================
+    // 2.C) PROYECCIÓN EMBALAJE POMÁCEAS - RECEPCIÓN (REG.CKU.015)
+    // =========================================================
+    if (templateId === "REG.CKU.015") {
+      const result = await finalizeProyEmbalajePomaceas(payload);
+
+      const counts: Record<string, any> =
+        (result as any)?.counts && typeof (result as any).counts === "object"
+          ? (result as any).counts
+          : {};
+
+      const status = healthToStatus(counts?.health_status);
+      const emoji = statusToEmoji(status);
+
+      await sendTeamsCard(
+        env.TEAMS_WEBHOOK_URL,
+        `${emoji} FINALIZE ${status} - PROY_EMB_POMACEAS (API)`,
+        "Normalización ejecutada: CKU_Submissions → usp_Load_PROY_EMB_POMACEAS_RECEPCION → tablas + KPI.",
+        {
+          ...baseFacts,
+          submission_id: String((result as any)?.submissionId ?? submissionId),
+          "tiempo(ms)": String(Date.now() - t0),
+          ...(Object.keys(counts).length
+            ? {
+              "main_rows": String(counts.main_rows ?? ""),
+              "tabla_calibre": String(counts.tabla_calibre_rows ?? ""),
+              "tabla_color_fondo": String(counts.tabla_color_fondo_rows ?? ""),
+              "tabla_color_cubr": String(counts.tabla_color_cubrimiento_rows ?? ""),
+              "danos_defectos": String(counts.danos_defectos_rows ?? ""),
+              "plagas_enfermedades": String(counts.plagas_enfermedades_rows ?? ""),
+              "proy_embalaje": String(counts.proyeccion_embalaje_rows ?? ""),
+              "proy_embalaje_det": String(counts.proyeccion_embalaje_det_rows ?? ""),
+              "condicion_camion": String(counts.condicion_camion_rows ?? ""),
+              "resumen_exportable": String(counts.resumen_exportable_rows ?? ""),
+              "KPI/proy_rows": String(counts.proy_rows ?? ""),
+              "KPI/expected_cells": String(counts.expected_cells_total ?? ""),
+              "KPI/completed_cells": String(counts.completed_cells_total ?? ""),
+              "KPI/missing_cells": String(counts.missing_cells_total ?? ""),
+              "KPI/completion_ratio": String(counts.completion_ratio ?? ""),
+              health_status: String(counts.health_status ?? ""),
+              processed_utc: String(counts.processed_utc ?? ""),
+            }
+            : {}),
+        }
+      );
+
+      return res.json({
+        ok: true,
+        submissionId: String((result as any)?.submissionId ?? submissionId),
+        requestId,
+        health_status: status,
+        counts,
+      });
+    }
+
+    // =========================================================
+    // 2.D) C.K.U EMPAQUE (REG.CKU.017)
+    // =========================================================
+    if (templateId === "REG.CKU.017") {
+      const result = await finalizeEmpaque(payload);
+
+      const counts: Record<string, any> =
+        (result as any)?.counts && typeof (result as any).counts === "object"
+          ? (result as any).counts
+          : {};
+
+      const status = healthToStatus(counts?.health_status);
+      const emoji = statusToEmoji(status);
+
+      await sendTeamsCard(
+        env.TEAMS_WEBHOOK_URL,
+        `${emoji} FINALIZE ${status} - CKU_EMPAQUE (API)`,
+        "Normalización ejecutada: CKU_Submissions → usp_Load_CKU_EMPAQUE → tablas + vistas PBI + health/KPI.",
+        {
+          ...baseFacts,
+          submission_id: String((result as any)?.submissionId ?? submissionId),
+          "tiempo(ms)": String(Date.now() - t0),
+          ...(Object.keys(counts).length
+            ? {
+              main_rows: String(counts.main_rows ?? ""),
+              pres_grupos: String(counts.pres_grupos ?? ""),
+              pres_detalles: String(counts.pres_detalles ?? ""),
+              paso3a_cells: String(counts.paso3a_cells ?? ""),
+              paso3b_cells: String(counts.paso3b_cells ?? ""),
+              paso3c_cells: String(counts.paso3c_cells ?? ""),
+              paso4_cells: String(counts.paso4_cells ?? ""),
+              paso5_rows: String(counts.paso5_rows ?? ""),
+              health_status: String(counts.health_status ?? ""),
+              processed_utc: String(counts.processed_utc ?? ""),
+            }
+            : {}),
+        }
+      );
+
+      return res.json({
+        ok: true,
+        submissionId: String((result as any)?.submissionId ?? submissionId),
+        requestId,
+        health_status: status,
+        counts,
+      });
+    }
+    // =========================================================
+    // 2.C) C.K.U PRESIZER (REG.CKU.018)
+    // =========================================================
+    if (templateId === "REG.CKU.018") {
+  const submissionId = normalizeSubmissionId(payload);
+
+  const result = await finalizePresizer(submissionId);
+
+  const counts: Record<string, any> =
+    (result as any)?.counts && typeof (result as any).counts === "object"
+      ? (result as any).counts
+      : {};
+
+  const status = healthToStatus(counts?.health_status);
+  const emoji = statusToEmoji(status);
+
+  await sendTeamsCard(
+    env.TEAMS_WEBHOOK_URL,
+    `${emoji} FINALIZE ${status} - C.K.U PRESIZER (API)`,
+    "Normalización ejecutada: CKU_Submissions → loader SQL (SP) → 13 tablas + health.",
+    {
+      ...baseFacts,
+      submission_id: String((result as any)?.submissionId ?? submissionId),
+      "tiempo(ms)": String(Date.now() - t0),
+      ...(Object.keys(counts).length
+        ? {
+            "tablas/tarjas": String(counts.tarjas_entrada ?? ""),
+            "tablas/camaras": String(counts.camaras ?? ""),
+            "tablas/canales_activos": String(counts.canales_activos ?? ""),
+            health_status: String(counts.health_status ?? ""),
+          }
+        : {}),
+    }
+  );
+
+  return res.json({
+    ok: true,
+    submissionId: String((result as any)?.submissionId ?? submissionId),
+    requestId,
+    health_status: status,
+    counts,
+  });
+}
+// =========================================================
+    // 2.D) ATMÓSFERA CONTROLADA POMÁCEAS (REG.CKU.022)
+    // =========================================================
+    if (templateId === "REG.CKU.022") {
+      const submissionId = normalizeSubmissionId(payload);
+
+      const result = await finalizeAtmControlada(submissionId);
+
+      const counts: Record<string, any> =
+        (result as any)?.counts && typeof (result as any).counts === "object"
+          ? (result as any).counts
+          : {};
+
+      const status = healthToStatus(counts?.health_status);
+      const emoji = statusToEmoji(status);
+
+      await sendTeamsCard(
+        env.TEAMS_WEBHOOK_URL,
+        `${emoji} FINALIZE ${status} - ATMÓSFERA CONTROLADA POMÁCEAS (API)`,
+        "Normalización ejecutada: CKU_Submissions → loader SQL (SP) → 5 tablas + health.",
+        {
+          ...baseFacts,
+          submission_id: String((result as any)?.submissionId ?? submissionId),
+          "tiempo(ms)": String(Date.now() - t0),
+          ...(Object.keys(counts).length
+            ? {
+                "tablas/grupos_presiones": String(counts.grupos_presiones ?? ""),
+                "tablas/detalles_presiones": String(counts.detalles_presiones ?? ""),
+                "tablas/conceptos_matriz": String(counts.conceptos_matriz ?? ""),
+                "tablas/frutos_matriz": String(counts.frutos_matriz ?? ""),
                 health_status: String(counts.health_status ?? ""),
-                processed_utc: String(counts.processed_utc ?? ""),
               }
             : {}),
         }
@@ -419,13 +614,11 @@ submissionsRouter.post("/finalize", async (req, res) => {
         submissionId: String((result as any)?.submissionId ?? submissionId),
         requestId,
         health_status: status,
-        // útil para debug rápido sin entrar a DB
         counts,
       });
     }
-
     // =========================================================
-    // 2.C) NO IMPLEMENTADO
+    // 2.Z) NO IMPLEMENTADO
     // =========================================================
     const msg =
       `Plantilla no implementada aún: templateId=${templateId}` +
@@ -477,7 +670,7 @@ submissionsRouter.post("/finalize", async (req, res) => {
     try {
       const payload = req.body as SubmissionPayload;
       if (payload?.id) await auditFail(payload, info.message);
-    } catch {}
+    } catch { }
 
     // Auditoría estándar (best effort)
     try {
@@ -499,7 +692,7 @@ submissionsRouter.post("/finalize", async (req, res) => {
           stack: String(info.stack ?? "").slice(0, 50_000),
         },
       });
-    } catch {}
+    } catch { }
 
     // Teams (best effort)
     try {
@@ -514,7 +707,7 @@ submissionsRouter.post("/finalize", async (req, res) => {
           "tiempo(ms)": String(Date.now() - t0),
         }
       );
-    } catch {}
+    } catch { }
 
     return res.status(500).json({
       ok: false,

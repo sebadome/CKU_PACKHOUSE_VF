@@ -317,7 +317,18 @@ function extractPresiones(
   createdAt: Date,
   updatedAt: Date
 ) {
-  const raw = data?.matriz_presiones;
+  // Fuente principal + fallbacks SOLO si la principal no existe
+  const rawPrimary = data?.matriz_presiones;
+
+  const rawFallback =
+    rawPrimary ??
+    data?.tabla_presiones ??
+    data?.presiones_matriz ??
+    data?.matrizPresiones ??
+    data?.matriz_de_presiones ??
+    data?.presiones;
+
+  const raw = rawFallback;
 
   if (!Array.isArray(raw)) {
     return { grupos: [] as PresionGrupo[], detalles: [] as PresionDetalle[] };
@@ -328,10 +339,43 @@ function extractPresiones(
 
   raw.forEach((g: any, idx: number) => {
     const gid = isUuid(g?._id) ? g._id : cryptoRandomUuidFallback();
+
     const calibre = (g?.calibre ?? "").toString().trim() || null;
     const n_frutos = toIntOrNull(g?.n_frutos);
     const brix = toNumOrNull(g?.brix);
 
+    // detalles reales: g.detalles = [{p1,p2}, ...]
+    const detArr = Array.isArray(g?.detalles) ? g.detalles : [];
+
+    // Normalizamos detalles pero NO insertamos vacíos
+    const detNorm: PresionDetalle[] = [];
+    detArr.forEach((d: any, jdx: number) => {
+      const p1 = toNumOrNull(d?.p1 ?? d?.lado1);
+      const p2 = toNumOrNull(d?.p2 ?? d?.lado2);
+
+      // si ambos null => es una fila vacía de la UI
+      if (p1 === null && p2 === null) return;
+
+      detNorm.push({
+        submission_id: submissionId,
+        grupo_id: gid,
+        idx_detalle: jdx,
+        p1,
+        p2,
+      });
+    });
+
+    // Grupo está "vacío" si no tiene info propia ni detalles con datos
+    const grupoVacio =
+      calibre === null &&
+      n_frutos === null &&
+      brix === null &&
+      detNorm.length === 0;
+
+    // Si el usuario apretó "Añadir fila" pero no llenó nada => NO insertamos
+    if (grupoVacio) return;
+
+    // Insertamos grupo
     grupos.push({
       submission_id: submissionId,
       grupo_id: gid,
@@ -343,24 +387,13 @@ function extractPresiones(
       updated_at: updatedAt,
     });
 
-    // Estructura real: g.detalles = [{p1,p2}, ...]
-    const det = Array.isArray(g?.detalles) ? g.detalles : [];
-    det.forEach((d: any, jdx: number) => {
-      const p1 = toNumOrNull(d?.p1 ?? d?.lado1);
-      const p2 = toNumOrNull(d?.p2 ?? d?.lado2);
-
-      detalles.push({
-        submission_id: submissionId,
-        grupo_id: gid,
-        idx_detalle: jdx,
-        p1,
-        p2,
-      });
-    });
+    // Insertamos detalles válidos
+    detalles.push(...detNorm);
   });
 
   return { grupos, detalles };
 }
+
 
 function extractAlmidonFilas(
   data: Record<string, any>,
