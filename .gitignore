@@ -35,3 +35,5 @@ backend/.env
 
 
 *.zip
+
+*.backup
