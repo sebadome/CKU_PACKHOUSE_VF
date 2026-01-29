@@ -3,6 +3,9 @@ import express, { Request, Response, NextFunction } from "express";
 import cors from "cors";
 import { env } from "./config/env";
 import { submissionsRouter } from "./routes/submissions.routes";
+const catalogoRoutes = require('./routes/catalogo');
+const productoresRoutes = require('./routes/productores');
+const variedadesRoutes = require('./routes/variedades');
 
 const app = express();
 
@@ -55,7 +58,9 @@ app.get("/health", (_req: Request, res: Response) => {
 // Routes
 // -----------------------
 app.use("/api/submissions", submissionsRouter);
-
+app.use('/api/catalogo', catalogoRoutes);
+app.use('/api/productores', productoresRoutes);
+app.use('/api/variedades', variedadesRoutes);
 // -----------------------
 // 404
 // -----------------------

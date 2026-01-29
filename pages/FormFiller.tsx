@@ -24,6 +24,9 @@ import { v4 as uuidv4 } from "uuid";
 import _ from 'lodash';
 import { PressureMatrixManager, PressureEntry } from "../components/PressureMatrixManager";
 import { Modal } from "../components/ui/Modal";
+import VariedadSelect from '../components/variedadgrupo';
+import AutoCompleteHuerto from '../components/AutoCompleteCatalog';
+import AutoCompleteProductor from '../components/AutoCompleteProductor';
 import { finalizeSubmission } from "../api/client";
 
 
@@ -1379,8 +1382,8 @@ const FormFiller: React.FC<FormFillerProps> = ({
 
         }
 
-            prevDataRef.current = JSON.parse(JSON.stringify(submission.data));
-        }, [submission?.data, template?.id, handleDataChange, isEditable]);
+        prevDataRef.current = JSON.parse(JSON.stringify(submission.data));
+    }, [submission?.data, template?.id, handleDataChange, isEditable]);
 
     const handleSafeNavigate = useCallback(
         async (to: string | number) => {
@@ -1831,19 +1834,99 @@ const RenderField: React.FC<{
                 max={field.validations?.max}
                 className="text-sm"
             />;
-        case "select":
+                case "select": {
+            const selectValue = String(value ?? "");
+
+            // ✅ Detectar el campo de variedad correctamente
+            if (field.dynamicOptions === "variedades") {
+                // ✅ Si la variedad viene con prefijo (ej: "recepcion.variedad" / "identificacion.variedad"),
+                // el grupo debe guardarse en el mismo prefijo: "recepcion.variedad_rotulada_grupo"
+                const prefix = field.key.includes(".")
+                    ? field.key.split(".").slice(0, -1).join(".")
+                    : "";
+
+                const grupoKey = prefix
+                    ? `${prefix}.variedad_rotulada_grupo`
+                    : "variedad_rotulada_grupo";
+
+                return (
+                    <VariedadSelect
+                        value={selectValue}
+                        onChange={(variedad, grupo) => {
+                            // Actualizar la variedad seleccionada
+                            onChange(field.key, variedad);
+
+                            // Auto-asignar el grupo (en el mismo path del field.key)
+                            onChange(grupoKey, grupo);
+
+                            // Si ya no quieres logs, borra estas líneas:
+                            console.log("Variedad seleccionada:", variedad);
+                            console.log("Grupo asignado:", grupo);
+                            console.log("Campo variedad key:", field.key);
+                            console.log("Campo grupo key:", grupoKey);
+                        }}
+                        disabled={field.readOnly || !isEditable}
+                    />
+                );
+            }
+
+            // ✅ SELECT NORMAL (todos los demás selects)
             return (
-                <Select id={field.key} name={field.key} value={value ?? ""} onChange={handleInputChange} disabled={disabled} error={error} className="text-sm">
+                <Select
+                    label={field.label}
+                    name={field.key}
+                    value={selectValue}
+                    onChange={(e) => onChange(field.key, e.target.value)}
+                    required={field.required}
+                    disabled={field.readOnly || !isEditable}
+                >
                     <option value="">-- Seleccionar --</option>
-                    {field.options?.map((opt) => <option key={opt} value={opt}>{opt}</option>)}
+                    {(field.options || []).map((opt) => (
+                        <option key={opt} value={opt}>
+                            {opt}
+                        </option>
+                    ))}
                 </Select>
             );
+        }
         case "boolean":
             return <input id={field.key} name={field.key} type="checkbox" className="h-5 w-5 rounded border-gray-300 text-cku-blue focus:ring-cku-blue disabled:opacity-50" checked={!!value} onChange={(e) => onChange(field.key, e.target.checked)} disabled={disabled} />;
         case "textarea":
             return <textarea id={field.key} name={field.key} className="mt-1 block w-full px-3 py-2 bg-white border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-cku-blue focus:border-cku-blue text-sm disabled:bg-gray-100" rows={4} value={value ?? ""} onChange={handleInputChange} disabled={disabled} />;
         case "dynamic_table":
             return <DynamicTable columns={dynamicSchema || field.columns || []} data={value || []} onChange={(data, cols) => onChange(field.key, data, { newColumns: cols })} canAddRows={field.user_can_add_rows} canAddCols={field.user_can_add_columns} isReviewMode={!isEditable || !!field.readOnly} label={field.label} activeColumnKey={activeColumnKey} onActiveColumnChange={onActiveColumnChange} highlightThreshold={highlightThreshold} />;
+        case 'autocomplete': {
+            const autocompleteValue = String(value ?? '');  // ✅ Usar 'value' directamente
+
+            if (field.key === 'huerto_cuartel' || field.key.includes('huerto')) {
+                return (
+                    <AutoCompleteHuerto
+                        value={autocompleteValue}
+                        onChange={(val) => onChange(field.key, val)}  // ✅ Usar 'onChange'
+                        disabled={field.readOnly || !isEditable}
+                    />
+                );
+            }
+
+            if (field.key === 'productor' || field.key.includes('productor')) {
+                return (
+                    <AutoCompleteProductor
+                        value={autocompleteValue}
+                        onChange={(val) => onChange(field.key, val)}  // ✅ Usar 'onChange'
+                        disabled={field.readOnly || !isEditable}
+                    />
+                );
+            }
+
+            return (
+                <Input
+                    label={field.label}
+                    value={autocompleteValue}
+                    onChange={(e) => onChange(field.key, e.target.value)}  // ✅ Usar 'onChange'
+                    disabled={field.readOnly || !isEditable}
+                />
+            );
+        }
         case "pressure_matrix":
             return <PressureMatrixManager
                 value={value || []}
