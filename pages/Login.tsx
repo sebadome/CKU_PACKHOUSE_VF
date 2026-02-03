@@ -1,4 +1,3 @@
-
 import React, { useState, useContext } from 'react';
 import { AuthContext } from '../context/AuthContext';
 import { Card, CardContent, CardHeader } from '../components/ui/Card';
@@ -12,6 +11,40 @@ const Login: React.FC = () => {
   
   const [rut, setRut] = useState('');
   const [password, setPassword] = useState('');
+
+  // ✅ NUEVO: Función para formatear RUT automáticamente
+  const formatRut = (value: string): string => {
+    // Remover todo excepto números y 'k' o 'K'
+    const cleaned = value.replace(/[^0-9kK]/g, '');
+    
+    if (cleaned.length === 0) return '';
+    
+    // Separar cuerpo y dígito verificador
+    const body = cleaned.slice(0, -1);
+    const dv = cleaned.slice(-1).toUpperCase();
+    
+    if (body.length === 0) return dv;
+    
+    // Formatear el cuerpo con puntos
+    const formattedBody = body.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+    
+    // Si solo hay cuerpo (aún escribiendo), no agregar guion
+    if (cleaned.length <= 1) return cleaned;
+    
+    // Retornar formato completo
+    return `${formattedBody}-${dv}`;
+  };
+
+  // ✅ NUEVO: Handler para el cambio de RUT con formateo automático
+  const handleRutChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    const formatted = formatRut(value);
+    
+    // Limitar longitud máxima (12 caracteres: XX.XXX.XXX-X)
+    if (formatted.length <= 12) {
+      setRut(formatted);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -52,9 +85,10 @@ const Login: React.FC = () => {
                             label="RUT" 
                             placeholder="Ej: 11.111.111-1" 
                             value={rut}
-                            onChange={(e) => setRut(e.target.value)}
+                            onChange={handleRutChange}
                             disabled={isLoading}
                             autoFocus
+                            maxLength={12}
                         />
                     </div>
                     <div>

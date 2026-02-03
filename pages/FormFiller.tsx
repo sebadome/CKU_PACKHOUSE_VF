@@ -61,6 +61,11 @@ const FormFiller: React.FC<FormFillerProps> = ({
     const [isDirty, setIsDirty] = useState(false);
     const fromNewRef = useRef(location.state?.fromNew || false);
     const prevDataRef = useRef<any>(null);
+    // ✅ Control de autocompletado Productor -> Código Productor (sin pisar cambios manuales)
+    const lastAutoCodeByKeyRef = useRef<Record<string, string>>({});
+    const lastAutoProdByKeyRef = useRef<Record<string, string>>({});
+    const producerLookupSeqRef = useRef<Record<string, number>>({});
+
 
     // NEW: Estados para el modal de Guardar Borrador
     const [isSaveDraftModalOpen, setIsSaveDraftModalOpen] = useState(false);
@@ -78,6 +83,36 @@ const FormFiller: React.FC<FormFillerProps> = ({
     const isEditable = useMemo(() => {
         return !isReadOnly && submission?.status === "Borrador";
     }, [isReadOnly, submission?.status]);
+    // ✅ Set con todas las keys del template (para detectar claves disponibles)
+    const templateFieldKeys = useMemo(() => {
+        if (!template?.sections) return new Set<string>();
+        const keys = template.sections.flatMap(s => s.fields.map(f => f.key));
+        return new Set(keys);
+    }, [template]);
+    const fetchProducerCode = useCallback(async (nombreFantasia: string): Promise<string> => {
+        const clean = (nombreFantasia || '').trim();
+        if (clean.length < 2) return '';
+
+        const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || "").replace(/\/+$/, "");
+        const url = `${API_BASE_URL}/api/catalogo/productor/codigo?nombre=${encodeURIComponent(clean)}`;
+
+
+        try {
+            const res = await fetch(url);
+            if (!res.ok) return '';
+            const json = await res.json();
+
+            // Aceptamos 2 formatos posibles:
+            // 1) { codigo: "185" }
+            // 2) { success: true, codigo: "185" }
+            const codigo = (json?.codigo ?? '').toString().trim();
+            return codigo;
+        } catch (e) {
+            console.error('❌ Error fetchProducerCode:', e);
+            return '';
+        }
+    }, []);
+
 
     const handleDataChange = useCallback((key: string, value: any, options?: { newColumns?: any, markAsDirty?: boolean }) => {
         setSubmission((prev) => {
@@ -100,6 +135,91 @@ const FormFiller: React.FC<FormFillerProps> = ({
             }
 
             _.set(next.data, key, value);
+            // ✅ Autocompletar Código Productor cuando cambia Productor (sin bloquear y sin pisar manual)
+            const keyLower = (key || '').toLowerCase();
+
+            // Detecta campos "productor" (pero evita los que ya son "codigo productor")
+            const isProducerField =
+                (keyLower === 'productor' || keyLower.endsWith('.productor') || keyLower.includes('productor')) &&
+                !keyLower.includes('codigo') &&
+                !keyLower.includes('cod');
+
+            if (isProducerField) {
+                const productorNombre = (value ?? '').toString().trim();
+
+                // Candidatos para key del código productor (según naming que suelen usar plantillas)
+                const candidates: string[] = [];
+
+                // 1) Mismo prefijo: "encabezado.productor" -> "encabezado.codigo_productor"
+                if (key.includes('.')) {
+                    const prefix = key.split('.').slice(0, -1).join('.');
+                    candidates.push(`${prefix}.codigo_productor`);
+                    candidates.push(`${prefix}.codigoProductor`);
+                    candidates.push(`${prefix}.productor_codigo`);
+                    candidates.push(`${prefix}.cod_productor`);
+                }
+
+                // 2) Root: "productor" -> "codigo_productor"
+                candidates.push('codigo_productor');
+                candidates.push('codigoProductor');
+                candidates.push('productor_codigo');
+                candidates.push('cod_productor');
+
+                // 3) Reemplazo directo por si existe misma convención
+                candidates.push(key.replace(/productor$/i, 'codigo_productor'));
+                candidates.push(key.replace(/productor$/i, 'codigoProductor'));
+                candidates.push(key.replace(/productor$/i, 'productor_codigo'));
+                candidates.push(key.replace(/productor$/i, 'cod_productor'));
+
+                // Elegir el primer candidato que exista en el template
+                const codeKey = candidates.find(k => templateFieldKeys.has(k));
+
+                if (codeKey) {
+                    // secuencia por codeKey para evitar race conditions
+                    const seq = (producerLookupSeqRef.current[codeKey] ?? 0) + 1;
+                    producerLookupSeqRef.current[codeKey] = seq;
+
+                    // Guardar "último productor" asociado a ese codeKey
+                    lastAutoProdByKeyRef.current[codeKey] = productorNombre;
+
+                    // Disparar fetch async (sin bloquear la UI)
+                    fetchProducerCode(productorNombre).then((codigo) => {
+                        // Si llegó vacío, no hacemos nada
+                        if (!codigo) return;
+
+                        setSubmission((prevSub) => {
+                            if (!prevSub) return prevSub;
+
+                            // Verificar que no haya cambiado el productor desde que se pidió
+                            const stillSameProducer =
+                                (producerLookupSeqRef.current[codeKey] ?? 0) === seq &&
+                                (lastAutoProdByKeyRef.current[codeKey] ?? '') === productorNombre;
+
+                            if (!stillSameProducer) return prevSub;
+
+                            const currentCode = (_.get(prevSub.data, codeKey) ?? '').toString();
+
+                            const lastAuto = lastAutoCodeByKeyRef.current[codeKey] ?? '';
+
+                            // Solo autocompletar si:
+                            // - está vacío, o
+                            // - coincide con el último autocompletado (así permitimos refrescar con nuevo productor)
+                            const shouldAutoFill =
+                                currentCode.trim() === '' || currentCode.trim() === lastAuto.trim();
+
+                            if (!shouldAutoFill) return prevSub;
+
+                            const nextSub = JSON.parse(JSON.stringify(prevSub));
+                            _.set(nextSub.data, codeKey, codigo);
+
+                            // Registrar "último autocompletado" para no pisar si el usuario lo cambia
+                            lastAutoCodeByKeyRef.current[codeKey] = codigo;
+
+                            return nextSub;
+                        });
+                    });
+                }
+            }
 
             // --- Lógica específica para REG.CKU.017 (Empaque) ---
             if (template?.id === 'REG.CKU.017') {

@@ -178,6 +178,36 @@ function j(v: any) {
   return JSON.stringify(v ?? null);
 }
 
+/**
+ * Garantiza que siempre retorne JSON válido para arrays/objetos.
+ * NUNCA retorna null, undefined, o el texto "null".
+ * Previene: "El texto JSON no tiene el formato correcto. Se encontró el carácter inesperado 'n' en la posición 0"
+ */
+function ensureJsonArray(data: any): string {
+  // Casos problemáticos: null, undefined, string vacío, o la palabra "null"
+  if (!data || data === null || data === undefined || data === 'null' || data === '') {
+    return '[]';
+  }
+  
+  // Si es un array vacío, retornar formato JSON
+  if (Array.isArray(data) && data.length === 0) {
+    return '[]';
+  }
+  
+  // Si es un objeto vacío, retornar objeto JSON
+  if (typeof data === 'object' && !Array.isArray(data) && Object.keys(data).length === 0) {
+    return '{}';
+  }
+  
+  // Convertir a JSON string de forma segura
+  try {
+    return JSON.stringify(data);
+  } catch (error) {
+    console.error('[ensureJsonArray] Error al serializar JSON:', error);
+    return '[]';
+  }
+}
+
 function toNumOrNull(v: any): number | null {
   if (v === null || v === undefined || v === "") return null;
   const n = Number(v);
@@ -347,13 +377,13 @@ function extractPresiones(
     // detalles reales: g.detalles = [{p1,p2}, ...]
     const detArr = Array.isArray(g?.detalles) ? g.detalles : [];
 
-    // Normalizamos detalles pero NO insertamos vacíos
+    // Normalizamos detalles pero NO insertamos vacÃ­os
     const detNorm: PresionDetalle[] = [];
     detArr.forEach((d: any, jdx: number) => {
       const p1 = toNumOrNull(d?.p1 ?? d?.lado1);
       const p2 = toNumOrNull(d?.p2 ?? d?.lado2);
 
-      // si ambos null => es una fila vacía de la UI
+      // si ambos null => es una fila vacÃ­a de la UI
       if (p1 === null && p2 === null) return;
 
       detNorm.push({
@@ -365,14 +395,14 @@ function extractPresiones(
       });
     });
 
-    // Grupo está "vacío" si no tiene info propia ni detalles con datos
+    // Grupo estÃ¡ "vacÃ­o" si no tiene info propia ni detalles con datos
     const grupoVacio =
       calibre === null &&
       n_frutos === null &&
       brix === null &&
       detNorm.length === 0;
 
-    // Si el usuario apretó "Añadir fila" pero no llenó nada => NO insertamos
+    // Si el usuario apretÃ³ "AÃ±adir fila" pero no llenÃ³ nada => NO insertamos
     if (grupoVacio) return;
 
     // Insertamos grupo
@@ -387,7 +417,7 @@ function extractPresiones(
       updated_at: updatedAt,
     });
 
-    // Insertamos detalles válidos
+    // Insertamos detalles vÃ¡lidos
     detalles.push(...detNorm);
   });
 
@@ -466,7 +496,7 @@ function extractSemillaSum(
   const r = arr[0] ?? null;
 
   // Si no hay nada, puedes devolver null y no insertar.
-  // Para trazabilidad BI, aquí lo dejamos igual (fila con nulls) solo si existe array (aunque vacío).
+  // Para trazabilidad BI, aquÃ­ lo dejamos igual (fila con nulls) solo si existe array (aunque vacÃ­o).
   if (!r && arr.length === 0) return null;
 
   return {
@@ -697,16 +727,16 @@ export async function finalizePrecosechaManzanas(payload: SubmissionPayload) {
     toNumOrNull(data.promedio_color_cubrimiento)
   );
 
-  request.input("matriz_frutos_externo_json", sql.NVarChar(sql.MAX), j(data.matriz_frutos_externo));
+  request.input("matriz_frutos_externo_json", sql.NVarChar(sql.MAX), ensureJsonArray(data.matriz_frutos_externo));
   request.input(
     "matriz_color_cubrimiento_json",
     sql.NVarChar(sql.MAX),
-    j(data.matriz_color_cubrimiento)
+    ensureJsonArray(data.matriz_color_cubrimiento)
   );
   request.input(
     "matriz_categorias_calibre_json",
     sql.NVarChar(sql.MAX),
-    j(data.matriz_categorias_calibre)
+    ensureJsonArray(data.matriz_categorias_calibre)
   );
 
   request.input("color_pulpa", sql.NVarChar(50), data.color_pulpa ?? null);
@@ -716,22 +746,22 @@ export async function finalizePrecosechaManzanas(payload: SubmissionPayload) {
   request.input("sol_promedio", sql.Decimal(18, 4), toNumOrNull(data.sol_promedio));
 
   // backup JSON (even though we normalize)
-  request.input("matriz_presiones_json", sql.NVarChar(sql.MAX), j(data.matriz_presiones));
+  request.input("matriz_presiones_json", sql.NVarChar(sql.MAX), ensureJsonArray(data.matriz_presiones));
 
   request.input("almidon_promedio", sql.Decimal(18, 4), toNumOrNull(data.almidon_promedio));
   request.input("almidon_max", sql.Decimal(18, 4), toNumOrNull(data.almidon_max));
   request.input("almidon_min", sql.Decimal(18, 4), toNumOrNull(data.almidon_min));
-  request.input("matriz_almidon_sol_json", sql.NVarChar(sql.MAX), j(data.matriz_almidon_sol));
-  request.input("matriz_color_semilla_json", sql.NVarChar(sql.MAX), j(data.matriz_color_semilla));
-  request.input("suma_color_semilla_json", sql.NVarChar(sql.MAX), j(data.suma_color_semilla));
+  request.input("matriz_almidon_sol_json", sql.NVarChar(sql.MAX), ensureJsonArray(data.matriz_almidon_sol));
+  request.input("matriz_color_semilla_json", sql.NVarChar(sql.MAX), ensureJsonArray(data.matriz_color_semilla));
+  request.input("suma_color_semilla_json", sql.NVarChar(sql.MAX), ensureJsonArray(data.suma_color_semilla));
 
   request.input("ph", sql.Decimal(18, 4), toNumOrNull(data.ph));
   request.input("acidez", sql.Decimal(18, 4), toNumOrNull(data.acidez));
   request.input("gasto_ml", sql.Decimal(18, 4), toNumOrNull(data.gasto_ml));
   request.input("ac_malico_pct", sql.Decimal(18, 4), toNumOrNull(data.ac_malico_pct));
 
-  request.input("matriz_cor_acuoso_json", sql.NVarChar(sql.MAX), j(data.matriz_cor_acuoso));
-  request.input("matriz_cor_mohoso_json", sql.NVarChar(sql.MAX), j(data.matriz_cor_mohoso));
+  request.input("matriz_cor_acuoso_json", sql.NVarChar(sql.MAX), ensureJsonArray(data.matriz_cor_acuoso));
+  request.input("matriz_cor_mohoso_json", sql.NVarChar(sql.MAX), ensureJsonArray(data.matriz_cor_mohoso));
 
   request.input("observaciones", sql.NVarChar(sql.MAX), data.observaciones ?? null);
   request.input("tecnico", sql.NVarChar(200), data.tecnico ?? null);

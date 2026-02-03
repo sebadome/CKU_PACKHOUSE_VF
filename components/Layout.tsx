@@ -1,6 +1,5 @@
-
 // components/Layout.tsx
-import React, { useContext, useMemo } from "react";
+import React, { useContext, useMemo, useEffect } from "react";
 import { Outlet, useNavigate, useLocation } from "react-router-dom";
 import { AuthContext } from "../context/AuthContext";
 import { useGlobalSettings } from "../context/GlobalSettingsContext";
@@ -26,6 +25,15 @@ const Header: React.FC = () => {
   const { planta, setPlanta, temporada, setTemporada } = useGlobalSettings();
   const { confirmExit, shouldConfirmExit } = useNavigationBlocker();
   const navigate = useNavigate();
+
+  // ✅ NUEVO: Sincronizar planta del usuario con GlobalSettings
+  useEffect(() => {
+    if (user?.planta) {
+      // Convertir "Santiago" -> "santiago", "San Felipe" -> "san_felipe"
+      const plantaValue = user.planta.toLowerCase().replace(/\s+/g, '_');
+      setPlanta(plantaValue);
+    }
+  }, [user?.planta, setPlanta]);
 
   const handleSafeNavigate = async (path: string) => {
     if (shouldConfirmExit()) {
@@ -57,6 +65,23 @@ const Header: React.FC = () => {
     logout();
   };
 
+  // ✅ NUEVO: Formatear nombre de planta para mostrar
+  const getFormattedPlanta = (plantaValue: string) => {
+    const plantaNames: Record<string, string> = {
+      'copiapo': 'Copiapó',
+      'coquimbo': 'Coquimbo',
+      'san_felipe': 'San Felipe',
+      'linderos': 'Linderos',
+      'requinoa': 'Requinoa',
+      'teno': 'Teno',
+      'linares': 'Linares',
+      'santiago': 'Santiago',
+      'romeral': 'Romeral',
+      'rancagua': 'Rancagua',
+    };
+    return plantaNames[plantaValue] || plantaValue;
+  };
+
   return (
     <header className="bg-cku-white shadow-md sticky top-0 z-20">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -80,21 +105,15 @@ const Header: React.FC = () => {
 
           {/* Controls Section */}
           <div className="flex items-center space-x-2 sm:space-x-4 overflow-x-auto no-scrollbar py-2 flex-shrink min-w-0">
-            <Select 
-              name="planta" 
-              value={planta}
-              onChange={(e) => setPlanta(e.target.value)}
-              aria-label="Planta" 
-              className="w-28 md:w-36 lg:w-48 text-xs sm:text-sm flex-shrink-0"
-            >
-              <option value="copiapo">Planta: Copiapó</option>
-              <option value="coquimbo">Planta: Coquimbo</option>
-              <option value="san_felipe">Planta: San Felipe</option>
-              <option value="linderos">Planta: Linderos</option>
-              <option value="requinoa">Planta: Requinoa</option>
-              <option value="teno">Planta: Teno</option>
-              <option value="linares">Planta: Linares</option>
-            </Select>
+            
+            {/* ✅ ACTUALIZADO: Planta bloqueada, viene de la BD */}
+            <div className="w-28 md:w-36 lg:w-48 text-xs sm:text-sm flex-shrink-0">
+              <div className="block w-full px-3 py-2 bg-gray-100 text-gray-700 border border-gray-300 rounded-lg shadow-sm cursor-not-allowed">
+                Planta: {getFormattedPlanta(planta)}
+              </div>
+            </div>
+
+            {/* ✅ ACTUALIZADO: Temporada seleccionable con 3 opciones */}
             <Select 
               name="temporada" 
               value={temporada}
@@ -104,10 +123,10 @@ const Header: React.FC = () => {
             >
               <option value="24-25">Temporada: 24-25</option>
               <option value="25-26">Temporada: 25-26</option>
+              <option value="26-27">Temporada: 26-27</option>
             </Select>
 
             {/* Role Badge - Visualización Dinámica */}
-            {/* Se muestra el rol actual del contexto o 'Usuario' por defecto */}
             <span className={`px-3 py-1.5 text-xs sm:text-sm font-semibold rounded-lg whitespace-nowrap flex-shrink-0 border ${
                 role === 'Administrador' ? 'bg-purple-100 text-purple-800 border-purple-200' : 'bg-blue-100 text-cku-blue border-blue-200'
             }`}>

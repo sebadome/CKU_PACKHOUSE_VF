@@ -1,4 +1,3 @@
-
 import React, { createContext, useState, useContext, ReactNode } from 'react';
 
 interface GlobalSettingsContextType {
@@ -6,7 +5,7 @@ interface GlobalSettingsContextType {
   setPlanta: (planta: string) => void;
   temporada: string;
   setTemporada: (temporada: string) => void;
-  getFormattedPlanta: () => string; // Helper para formatear 'teno' a 'Teno'
+  getFormattedPlanta: () => string;
 }
 
 const GlobalSettingsContext = createContext<GlobalSettingsContextType | undefined>(undefined);
@@ -20,10 +19,9 @@ export const useGlobalSettings = () => {
 };
 
 export const GlobalSettingsProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const [planta, setPlanta] = useState<string>('teno'); // Valor por defecto
-  const [temporada, setTemporada] = useState<string>('24-25');
+  const [planta, setPlanta] = useState<string>('teno');
+  const [temporada, setTemporada] = useState<string>('25-26'); // ✅ CAMBIADO: Pre-seleccionado 25-26
 
-  // Convierte "san_felipe" -> "San Felipe", "teno" -> "Teno"
   const getFormattedPlanta = () => {
     if (!planta) return '';
     return planta

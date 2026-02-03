@@ -1,23 +1,24 @@
 // backend/src/index.ts
 import express, { Request, Response, NextFunction } from "express";
 import cors from "cors";
+import path from "path";
+import fs from "fs";
 import { env } from "./config/env";
 import { submissionsRouter } from "./routes/submissions.routes";
-const catalogoRoutes = require('./routes/catalogo');
-const productoresRoutes = require('./routes/productores');
-const variedadesRoutes = require('./routes/variedades');
+import authRouter from "./routes/auth";
+
+const catalogoRoutes = require("./routes/catalogo");
+const productoresRoutes = require("./routes/productores");
+const variedadesRoutes = require("./routes/variedades");
 
 const app = express();
 
 // Útil en deploys detrás de proxy (Render/Railway/Fly/Nginx)
-// No rompe local.
 app.set("trust proxy", 1);
 
 // -----------------------
 // CORS
 // -----------------------
-// Si defines CORS_ORIGINS (comma-separated) en prod, se aplica allowlist.
-// Si NO lo defines, se permite cualquier origin (similar a tu "origin: true").
 const allowedOrigins = (process.env.CORS_ORIGINS ?? "")
   .split(",")
   .map((s) => s.trim())
@@ -44,7 +45,6 @@ app.use(
 // -----------------------
 // Body parser
 // -----------------------
-// 10mb es más seguro para payloads con matrices grandes (sin pasarse).
 app.use(express.json({ limit: "10mb" }));
 
 // -----------------------
@@ -55,12 +55,46 @@ app.get("/health", (_req: Request, res: Response) => {
 });
 
 // -----------------------
-// Routes
+// Routes API
 // -----------------------
+app.use("/api/auth", authRouter);
 app.use("/api/submissions", submissionsRouter);
-app.use('/api/catalogo', catalogoRoutes);
-app.use('/api/productores', productoresRoutes);
-app.use('/api/variedades', variedadesRoutes);
+app.use("/api/catalogo", catalogoRoutes);
+app.use("/api/productores", productoresRoutes);
+app.use("/api/variedades", variedadesRoutes);
+
+// -----------------------
+// Servir frontend (Vite dist) + SPA fallback
+// -----------------------
+// Asumiendo estructura:
+// - frontend/dist (generado por "vite build")
+// - backend/dist (generado por "tsc")
+// En runtime __dirname apunta a backend/dist
+const frontendDistPath =
+  process.env.FRONTEND_DIST_PATH?.trim() ||
+  path.resolve(__dirname, "../../frontend/dist");
+
+const indexHtml = path.join(frontendDistPath, "index.html");
+
+if (fs.existsSync(indexHtml)) {
+  // Servir archivos estáticos (assets)
+  app.use(express.static(frontendDistPath));
+
+  // SPA fallback: cualquier ruta que NO sea /api debe devolver index.html
+  // IMPORTANTE: esto debe ir antes del 404
+  app.get("*", (_req: Request, res: Response) => {
+    res.sendFile(indexHtml);
+  });
+
+  console.log(`[backend] Frontend servido desde: ${frontendDistPath}`);
+} else {
+  console.warn(
+    `[backend] No se encontró frontend build en: ${frontendDistPath}. ` +
+      `Se servirá SOLO la API. ` +
+      `Tip: ejecuta "vite build" en el frontend o define FRONTEND_DIST_PATH.`
+  );
+}
+
 // -----------------------
 // 404
 // -----------------------
