@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useContext, useCallback } from "react";
 import { HashRouter, Routes, Route, Navigate, Outlet } from "react-router-dom";
 import Home from "./pages/Home";
@@ -9,10 +8,12 @@ import Drafts from "./pages/Drafts";
 import Admin from "./pages/Admin";
 import Library from "./pages/Library";
 import Login from "./pages/Login";
+import Register from "./pages/Register";
+import AuthLanding from "./pages/authlanding";
 import { FormTemplate, FormSubmission, UserRole } from "./types";
 import { MOCK_TEMPLATES, MOCK_SUBMISSIONS } from "./constants";
 import Layout from "./components/Layout";
-import { AuthContext, AuthProvider } from "./context/AuthContext"; // Ensure AuthProvider is imported
+import { AuthContext, AuthProvider } from "./context/AuthContext";
 import { v4 as uuidv4 } from "uuid";
 import { NavigationBlockerProvider } from "./context/NavigationBlockerContext";
 import { ToastProvider } from "./context/ToastContext";
@@ -21,7 +22,7 @@ import _ from 'lodash';
 
 // Wrapper component to handle Auth logic cleanly
 const AppContent: React.FC = () => {
-  const { isAuthenticated, user } = useContext(AuthContext);
+  const { isAuthenticated, user, isLoading } = useContext(AuthContext);
   const [templates, setTemplates] = useState<FormTemplate[]>([]);
   const [submissions, setSubmissions] = useState<FormSubmission[]>([]);
 
@@ -50,11 +51,12 @@ const AppContent: React.FC = () => {
         data: {},
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
-        submittedBy: user?.name || "Usuario (CKU)", 
+        submittedBy: user?.name || "Usuario (CKU)",
+        planta: user?.planta || "",
       };
       return newSubmission;
     },
-    [user?.name]
+    [user?.name, user?.planta]
   );
 
   const saveSubmission = useCallback((submission: FormSubmission) => {
@@ -77,9 +79,29 @@ const AppContent: React.FC = () => {
     });
   }, []);
 
-  // Si no está autenticado, mostramos Login exclusivamente
+  // Mostrar pantalla de carga mientras verifica sesión
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-gray-100 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-cku-blue mx-auto mb-4"></div>
+          <p className="text-gray-600">Cargando...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // ✅ ACTUALIZADO: Rutas públicas SIN register (comentado para futuro uso)
   if (!isAuthenticated) {
-    return <Login />;
+    return (
+      <Routes>
+        <Route path="/" element={<AuthLanding />} />
+        <Route path="/login" element={<Login />} />
+        {/* <Route path="/register" element={<Register />} /> */}
+        {/* ☝️ Register comentado - ahora es ruta protegida solo para Administradores */}
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    );
   }
 
   // Rutas protegidas por Rol
@@ -162,7 +184,7 @@ const AppContent: React.FC = () => {
                 />
               }
             />
-              <Route path="/admin" element={<Admin templates={templates} />} />
+            <Route path="/admin" element={<Admin templates={templates} />} />
             <Route
               path="/admin/templates/new"
               element={<TemplateBuilder findTemplate={findTemplate} updateTemplate={updateTemplate} />}
@@ -171,6 +193,9 @@ const AppContent: React.FC = () => {
               path="/admin/templates/:id"
               element={<TemplateBuilder findTemplate={findTemplate} updateTemplate={updateTemplate} />}
             />
+            
+            {/* ✅ NUEVO: Register solo para Administradores */}
+            <Route path="/register" element={<Register />} />
           </Route>
 
           {/* Fallback */}
@@ -187,7 +212,7 @@ const App: React.FC = () => {
       <AuthProvider>
         <GlobalSettingsProvider>
           <ToastProvider>
-             <AppContent />
+            <AppContent />
           </ToastProvider>
         </GlobalSettingsProvider>
       </AuthProvider>

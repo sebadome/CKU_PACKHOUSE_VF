@@ -390,10 +390,12 @@ const RECEPCION_MADUREZ_TEMPLATE: FormTemplate = {
             fields: [
                 { key: 'encabezado.planta', label: 'Planta', type: 'text', readOnly: true },
                 { key: 'encabezado.temporada', label: 'Temporada', type: 'text', readOnly: true },
-                { key: 'identificacion.codigo', label: 'CÓDIGO', type: 'text' },
+                { key: 'encabezado.codigo_productor', label: 'CÓDIGO', type: 'text', readOnly: true },
+
 
                 // ✅ Productor igual en todas: autocomplete
-                { key: 'identificacion.productor', label: 'PRODUCTOR', type: 'autocomplete' },
+                { key: 'encabezado.productor', label: 'PRODUCTOR', type: 'autocomplete' },
+
 
                 { key: 'encabezado.tipo_fruta', label: 'Tipo Fruta', type: 'select', options: ['MANZANA', 'PERA'] },
 
@@ -791,9 +793,9 @@ const PROYECCION_EMBALAJE_TEMPLATE: FormTemplate = {
                 { key: 'encabezado.temporada', label: 'Temporada', type: 'text', readOnly: true },
 
                 // ✅ Productor como en REG.CKU.013 (autocomplete)
-                { key: 'recepcion.productor', label: 'Productor', type: 'autocomplete' },
+                { key: 'encabezado.productor', label: 'Productor', type: 'autocomplete' },
+                { key: 'encabezado.codigo_productor', label: 'Código Productor', type: 'text', readOnly: true },
 
-                { key: 'recepcion.codigo_productor', label: 'Código Productor', type: 'text' },
                 { key: 'encabezado.tipo_fruta', label: 'Tipo de fruta', type: 'select', options: ['MANZANA', 'PERA'] },
 
                 // ✅ Variedad Real como en REG.CKU.013 (select con dynamicOptions: 'variedades')
@@ -1184,7 +1186,8 @@ const EMPAQUE_PRESIZE_TEMPLATE: FormTemplate = {
                 // ✅ Autocomplete productor (RenderField detecta field.key incluye "productor")
                 { key: 'encabezado.productor', label: 'Productor', type: 'autocomplete' },
 
-                { key: 'encabezado.codigo_productor', label: 'Código Productor', type: 'text' },
+                { key: 'encabezado.codigo_productor', label: 'Código Productor', type: 'text', readOnly: true },
+
                 { key: 'encabezado.mercado', label: 'Mercado', type: 'text' },
 
                 // ✅ Variedad Real (usa VariedadSelect via FormFiller por dynamicOptions:"variedades")

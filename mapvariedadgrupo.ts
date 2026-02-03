@@ -1,10 +1,16 @@
-import { VariedadOption } from './types';
+import { VariedadOption } from "./types";
+
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
 
 export const getVariedades = async (): Promise<VariedadOption[]> => {
-  const res = await fetch('http://localhost:4000/api/variedades');
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/variedades`);
+    if (!res.ok) return [];
 
-  if (!res.ok) return [];
-
-  const json = await res.json();
-  return json.data || [];
+    const json = await res.json();
+    return json?.data ?? [];
+  } catch (e) {
+    console.error("getVariedades:", e);
+    return [];
+  }
 };

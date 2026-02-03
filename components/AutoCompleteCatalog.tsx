@@ -1,6 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
 import Input from './ui/Input';
 
+
+
 interface Props {
   value: string;
   onChange: (value: string) => void;
@@ -19,9 +21,9 @@ const AutocompleteHuerto: React.FC<Props> = ({ value, onChange, disabled }) => {
       setOpen(false);
       return;
     }
-
-    const url = `http://localhost:4000/api/catalogo/autocomplete/huerto?q=${encodeURIComponent(q)}`;
-
+    const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
+    //const url = `http://localhost:4000/api/catalogo/autocomplete/huerto?q=${encodeURIComponent(q)}`;
+    const url = `${API_BASE_URL}/api/catalogo/autocomplete/huerto?q=${encodeURIComponent(q)}`;
     try {
       const res = await fetch(url);
       if (!res.ok) throw new Error(`Error en fetch: ${res.statusText}`);

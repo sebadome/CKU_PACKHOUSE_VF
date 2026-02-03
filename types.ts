@@ -1,9 +1,13 @@
 export type FormStatus = 'Borrador' | 'Ingresado';
-
 export type UserRole = 'Administrador' | 'Trabajador CKU';
 
+// ✅ ACTUALIZADO: User con todos los campos necesarios para autenticación
 export interface User {
   name: string;
+  apellido: string;      // ← NUEVO
+  email: string;         // ← NUEVO
+  rut: string;          // ← NUEVO
+  planta: string;       // ← NUEVO
   roles: UserRole[];
 }
 
@@ -23,12 +27,13 @@ export type FieldType =
   | 'file'
   | 'dynamic_table'
   | 'pressure_matrix'
-  | 'autocomplete';  // ← LÍNEA NUEVA
+  | 'autocomplete';
 
 export interface VariedadOption {
   variedad: string;
   grupo: string;
 }
+
 export interface FieldValidation {
   min?: number;
   max?: number;
@@ -45,22 +50,20 @@ export interface DynamicTableColumn {
   options?: string[];
   catalog?: string;
   required?: boolean;
-  // FIX: Replace min with validations object for consistency
   validations?: FieldValidation;
   calc?: string;
   readOnly?: boolean;
   help?: string;
-  excludeFromCalc?: boolean; // NEW: Allows excluding specific columns from row calculations
+  excludeFromCalc?: boolean;
 }
 
-// NEW: Interface for field dependencies (conditional visibility)
 export interface FieldDependency {
-  key: string; // The key of the field to watch (dot notation supported in implementation)
-  value: any | any[]; // The value(s) that make the dependent field visible
+  key: string;
+  value: any | any[];
 }
 
 export interface FormField {
-  id?: string; // NEW: Unique ID for the field, optional for mocks
+  id?: string;
   key: string;
   label: string;
   type: FieldType;
@@ -68,36 +71,32 @@ export interface FormField {
   help?: string;
   validations?: FieldValidation;
   options?: string[];
-  dynamicOptions?: string;  // ← LÍNEA NUEVA
-  campo?: string;           // ← LÍNEA NUEVA
+  dynamicOptions?: string;
+  campo?: string;
   catalog?: string;
   series_count?: number;
   columns?: DynamicTableColumn[];
-  initialRows?: Record<string, any>[]; // NEW: Allow admins to set default rows
+  initialRows?: Record<string, any>[];
   user_can_add_columns?: boolean;
   user_can_add_rows?: boolean;
   persist_schema_per_form?: boolean;
-  order?: number; // NEW: Order for rendering, optional for mocks
-  // FIX: Add readOnly property to FormField
+  order?: number;
   readOnly?: boolean;
-  // NEW: Add dependency for conditional visibility
   dependency?: FieldDependency;
-  hideBrix?: boolean; // NEW: Propiedad para ocultar brix en matrices de presión
-  hideCalibre?: boolean; // NEW: Propiedad para ocultar calibre en matrices de presión
-  showSummaryColumns?: boolean; // NEW: Propiedad para mostrar MAX, MIN, X en matrices de presión
-  showOnlyAverage?: boolean; // NEW: Propiedad para mostrar solo el promedio en matrices de presión
-  isWeightMode?: boolean; // NEW: Indica si la matriz de presiones opera en modo pesos
+  hideBrix?: boolean;
+  hideCalibre?: boolean;
+  showSummaryColumns?: boolean;
+  showOnlyAverage?: boolean;
+  isWeightMode?: boolean;
 }
 
 export interface FormSection {
-  id?: string; // NEW: Unique ID for the section, optional for mocks
+  id?: string;
   key: string;
   title: string;
-  // FIX: Add optional description to FormSection
   description?: string;
   fields: FormField[];
-  order?: number; // NEW: Order for rendering, optional for mocks
-  // NEW: Add dependency for conditional section visibility
+  order?: number;
   dependency?: FieldDependency;
 }
 
@@ -109,8 +108,8 @@ export interface FormTemplate {
   status: TemplateStatus;
   tags: string[];
   sections: FormSection[];
-  publishedTo?: UserRole[]; // NEW
-  icon?: string; // NEW
+  publishedTo?: UserRole[];
+  icon?: string;
 }
 
 export interface FormSubmission {
@@ -123,5 +122,5 @@ export interface FormSubmission {
   submittedBy?: string;
   dynamicSchemas?: Record<string, DynamicTableColumn[]>;
   planta?: string;
-  customName?: string; // NEW: Nombre personalizado para identificar el borrador
+  customName?: string;
 }
